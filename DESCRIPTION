@@ -1,0 +1,33 @@
+Package: GonzalezReymundez2021
+Type: Package
+Title: MOSS-Gonzalez Reymundez et al (2021)
+Version: 0.1.0
+Authors@R: c(person("Agustin", "Gonzalez-Reymundez", email = "agugonrey@gmail.com", role = c("aut","cre")))
+Description: This folder contains codes to follow along examples and replicate results shown in Gonzalez-Reymundez et al (2021).
+License: GPL-2
+URL: https://github.com/agugonrey/GonzalezReymundez2021
+Imports:
+    MOSS
+Suggests:
+    annotate,
+    bigparallelr,
+    bigstatsr,
+    future.apply,
+    scatterpie,
+    clValid,
+    ComplexHeatmap,
+    fpc,
+    ggplot2,
+    ggpmisc,
+    ggthemes,
+    gridExtra,
+    irlba,
+    knitr,
+    MASS,
+    rmarkdown,
+    testthat,
+    viridis
+VignetteBuilder: 
+    knitr
+Encoding: UTF-8
+RoxygenNote: 7.1.1
