@@ -13,7 +13,7 @@ The following sections contain the codes needed to generate and plot the results
 ####     [*4.1 - Generate results*](https://github.com/agugonrey/GonzalezReymundez2021/blob/master/inst/analytic_performance_moss.R)
 ####     [*4.2 - Generate Figure 1-A*](https://github.com/agugonrey/GonzalezReymundez2021/blob/master/inst/make_Figure1_A.R)
 
-### 4) Computational performance.
+### 5) Computational performance.
 ####    [*5.1 - Generate results*](https://github.com/agugonrey/GonzalezReymundez2021/blob/master/inst/omic_int_comparisons_times.R)
 ####    [*5.2 - Generate Figure 1-B*](https://github.com/agugonrey/GonzalezReymundez2021/blob/master/inst/make_Figure1_B.R)
 
