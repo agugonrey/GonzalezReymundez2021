@@ -2,20 +2,28 @@
 ## -The following lines, preceded by '##', represent a suggestion to
 ## run the R code below in a cluster using SLURM-
 
-##!/usr/bin/bash --login
+## #!/usr/bin/bash --login
+## #!/mnt/research/quantgen/tools/scripts/Rscript_login_shell_wrapper
 
-##SBATCH --job-name=mossAnPerf
-##SBATCH --time=20:00:00
-##SBATCH --nodes=1
-##SBATCH --cpus-per-task=20
-##SBATCH --mem=100gb
-##SBATCH --array=1-10000
+## #SBATCH --job-name=omic_integration
+## #SBATCH --time=10:00:00
+## #SBATCH --mem=30G
+## #SBATCH --array=101-500
 
-#cd $SLURM_SUBMIT_DIR
+## #SBATCH --output=/mnt/research/quantgen/logs/%A_%a
 
-#R CMD BATCH --no-save --no-restore
-# '--args jobID='${SLURM_ARRAY_TASK_ID}
-# analytic_performance_moss.R x_perf_out_${SLURM_ARRAY_TASK_ID}
+## cd $SLURM_SUBMIT_DIR
+
+## if [ -d "output_files" ]
+## then
+## echo "Storing output results in output_files/"
+## else
+##   mkdir output_files
+## fi
+
+
+## R CMD BATCH --no-save --no-restore '--args jobID='${SLURM_ARRAY_TASK_ID} omic_integration_comparisson.R output_files/x_${SLURM_ARRAY_TASK_ID}.out
+
 
 #------------------------------------------------------
 # analytic_performance_moss.R:
@@ -31,123 +39,200 @@ for(i in seq_along(args)){
 }
 
 # Get job ID.
-if(!exists("jobID")){jobID <- 1}
+if (!exists("jobID")) jobID <- 1
 
 # Load required packages.
-library("MOSim")
+library("iCluster")
+library("NMF")
+library("SNFtool")
+library("OmicsPLS")
+library("mixOmics")
 library("MOSS")
+library("pROC")
 
-# Set simulation scenarios.
-scenarios <- expand.grid(n=c(1e3,1e4),
-                         p=c(1e2,1e3,1e4),
-                         signal=c(0.05,0.2),
-                         rep=seq_len(1e3))
+# Use gene expression from breast tumors from TCGA.
+data("breast.TCGA")
 
-# Exclude the largest so MOSim can run.
-scenarios <- scenarios[!(scenarios$n == 1e4 &
-                           scenarios$p == 1e4), ]
+PE <- rbind(breast.TCGA$data.train$protein)
+GE <- rbind(breast.TCGA$data.train$mrna)
 
-# Set scenario and random repetition.
-set.seed(34*scenarios[jobID, "rep"])
+# Get proportion of features with signal.
+PROP_SIGNAL <- c(0.1,0.8)
 
-# Set types of omic blocks to simulate.
-omics_list <- c("RNA-seq", "miRNA-seq","DNase-seq")
+# Create object(s) to store results.
+RES1 <- NULL
 
-# Set simulation options by omic block.
-omics_options <- c(
+# Create a response omic.
+set.seed(7*jobID+jobID*3)
 
-  omicSim(#Name of the omic.
-    "RNA-seq",
-    # Limit the number of features to simulate
-    totalFeatures = scenarios[jobID, "p"]),
+# Shuffle features.
+signal_features_PE <- sample(seq_len(ncol(PE)))
+signal_features_GE <- sample(seq_len(ncol(GE)))
 
-  omicSim("miRNA-seq",
-          # Limit the number of features to simulate
-          totalFeatures = scenarios[jobID, "p"],
-          # Modify the percentage of regulators with effects.
-          regulatorEffect = list(
-            'activator' = 0.0,
-            'repressor' = scenarios[jobID, "signal"],
-            'NE' = 1 - scenarios[jobID, "signal"]
-          )),
-  omicSim("DNase-seq",
-          # Limit the number of features to simulate
-          totalFeatures = scenarios[jobID, "p"],
-          # Modify the percentage of regulators with effects.
-          regulatorEffect = list(
-            'activator' = 0.0,
-            'repressor' = scenarios[jobID, "signal"],
-            'NE' = 1 - scenarios[jobID, "signal"])))
+# Break correlations among features and generate noise.
+#i <- sample(seq_len(nrow(PE)),round(nrow(PE)*0.8))
+#PE <- PE[i,]
+#GE <- GE[i,]
+PE <- scale(PE)
+GE <- scale(GE)
+PE[is.na(PE)] <- 0
+GE[is.na(GE)] <- 0
+PE_perm <- apply(PE,2,sample)
+GE_perm <- apply(GE,2,sample)
 
-# Create multi-omic data.
-multi_simulation <- mosim(omics = omics_list,
-                          numberReps = scenarios[jobID, "n"],
-                          numberGroups = 3,
-                          times = 1,
-                          omicsOptions = omics_options)
+for (prop_signal in PROP_SIGNAL) {
 
-# Turning simulated omics into MOSS inputs.
-out_sim <- lapply(omicResults(multi_simulation), t)
+  # Get proportion of signal.
+  prop_signal_PE <- round(prop_signal * ncol(PE))
+  prop_signal_GE <- round(prop_signal * ncol(GE))
 
-# Get simulation information.
-out_settings <- omicSettings(multi_simulation,
-                             association = FALSE,
-                             only.linked = TRUE)
+  # Set features labels.
+  features_labels_PE <- rep("Backround",ncol(PE))
+  features_labels_PE[signal_features_PE[seq_len(prop_signal_PE)]] <- "Signal"
 
-# Define  background features (i.e. noise).
-features_labels <- rep("Background",
-                       3 * scenarios[jobID, "p"])
+  PE_perm[, signal_features_PE[seq_len(prop_signal_PE)]] <-
+    PE[,signal_features_PE[seq_len(prop_signal_PE)]]
 
-# Define regulatory modules (i.e. signal).
-features_labels[unlist(lapply(out_sim,colnames)) %in%
-                  unique(c(out_settings[[1]]$ID[out_settings[[1]]$DE],
-                           out_settings[[2]]$ID,
-                           out_settings[[3]]$ID))] <- "Signal"
+  features_labels_GE <- rep("Backround",ncol(GE))
+  features_labels_GE[signal_features_GE[seq_len(prop_signal_GE)]] <- "Signal"
 
-# Run MOSS
-out_moss <- moss(data.blocks = out_sim,
-                 nu.v = round(seq(1,3*scenarios[jobID, "p"])),
-                 alpha.v = 0.5,
-                 axes.pos = c(1, 2),
-                 exact.dg = TRUE,
-                 use.fbm = TRUE,
-                 nu.parallel = TRUE,
-                 cluster = list(eps_range=c(0,1),
-                                    eps_res=10,
-                                    min_clus_size=2),
-                 plot = TRUE,
-                 lib.thresh = FALSE)
+  GE_perm[, signal_features_GE[seq_len(prop_signal_GE)]] <-
+    GE[,signal_features_GE[seq_len(prop_signal_GE)]]
 
-# Measure variable selection performance.
-tmp <- out_moss$feat_signatures$signatures$Cluster != 0 &
-  out_moss$feat_signatures$signatures$Candidate == TRUE
+  features_labels <- c(features_labels_PE,features_labels_GE)
+  true <- ifelse(features_labels == "Signal", 1, 0)
 
-pred_pos <- rep(FALSE, length(features_labels))
-pred_pos[unlist(lapply(out_sim, colnames)) %in%
-           out_moss$feat_signatures$signatures$Feature_name[tmp]] <- TRUE
-pred_neg <- !pred_pos
-true_pos <- features_labels == "Signal"
-true_neg <- !true_pos
-TP <- sum(pred_pos & true_pos)
-FP <- sum(pred_pos & true_neg)
-TN <- sum(pred_neg & true_neg)
-FN <- sum(pred_neg & true_pos)
+  # Fit MOSS.
+  out_moss <- MOSS::moss(data.blocks = list(PE_perm,GE_perm),
+                         method = "pca",nu.v=100,alpha.v = 0,
+                         verbose = TRUE,norm.arg = TRUE,
+                         use.fbm = TRUE,
+                         K.X=2)
 
-perf <- c("ACC" = (TP + TN) / (TP + TN + FP + FN),
-          "PRE" = 1 - (FP / (FP + TP)),
-          "SPE" = TN / (TN + FP),
-          "SEN" = TP / (TP + FN))
+  # Get ROCs.
+  AUC <- smooth(roc(predictor = out_moss$sparse$v[,1]^2 ,
+                    response = true),
+                method="density",n=500)
 
-# Store results.
-res <- data.frame("n"=scenarios[jobID, "n"],
-                  "p"=scenarios[jobID, "p"],
-                  "Signal"=scenarios[jobID, "signal"],
-                  "Perf_met"=names(perf),
-                  "Perf_value"=perf,
-                  "Repetition"=scenarios[jobID, "rep"])
-# Save results.
-save(res,
-     file=paste0("moss_perf_",jobID,".RData"))
+  # Store performance results.
+  res <- data.frame(method="MOSS",
+                    prop_signal=prop_signal,
+                    SENS=AUC$sensitivities,
+                    SPEC=-AUC$specificities,
+                    rep=jobID)
+  RES1 <- rbind(RES1,res)
 
-# Exit R without saving.
-q(save = "no")
+  # Fit mixOmics.
+  out_mixOmics <- mixOmics::pca(X = cbind(PE_perm,GE_perm),
+                                ncomp = 2)
+
+  AUC <- smooth(roc(predictor=out_mixOmics$loadings$X[,1]^2,
+                    response=ifelse(true,
+                                    1,0)),
+                method="density",n=500)
+  # Store performance results.
+  res <- data.frame(method="mixOmics",
+                    prop_signal=prop_signal,
+                    SENS=AUC$sensitivities,
+                    SPEC=-AUC$specificities,
+                    rep=jobID)
+
+  RES1 <- rbind(RES1,res)
+
+  # Fit iCluster.
+  out_iCluster <- iCluster::iCluster2(datasets = list(PE_perm,GE_perm),
+                                      k = 4,
+                                      lambda = c(1e3,1e3))
+
+  AUC <- smooth(roc(predictor=out_iCluster$W[,1]^2,
+                    response=ifelse(true,
+                                    1,0)),
+                method="density",n=500)
+
+  # Store performance results.
+  res <- data.frame(method="iCluster",
+                    prop_signal=prop_signal,
+                    SENS=AUC$sensitivities,
+                    SPEC=-AUC$specificities,
+                    rep=jobID)
+
+  RES1 <- rbind(RES1,res)
+
+  # Fit SNF.
+  blocks <- lapply(list(PE_perm,GE_perm),
+                   standardNormalization)
+
+  K <-  20;		# number of neighbors,
+  alpha <-  0.5;  	# hyperparameter.
+  T0 <-  20;
+  Dist1 <-  (dist2(blocks[[1]],blocks[[1]]))^(1/2)
+  Dist2 <-  (dist2(blocks[[2]],blocks[[2]]))^(1/2)
+
+  #Similarity graphs.
+  W1 <-  affinityMatrix(Dist1, K, alpha)
+  W2 <-  affinityMatrix(Dist2, K, alpha)
+
+  # Rank features.
+  out_snf <- rankFeaturesByNMI(blocks,
+                               SNF(list(W1,W2), K, T0))
+  AUC <- smooth(roc(predictor=unlist(out_snf[[1]]),
+                    response=ifelse(true,
+                                    1,0)),
+                method="density",n=500)
+  # Store performance results.
+  res <- data.frame(method="SNF",
+                    prop_signal=prop_signal,
+                    SENS=AUC$sensitivities,
+                    SPEC=-AUC$specificities,
+                    rep=jobID)
+
+  RES1 <- rbind(RES1,res)
+
+  # Fit NMF.
+  out_nmf <- nmf(rbind(t(ifelse(PE_perm < 0, 0, PE_perm)),
+                       t(ifelse(GE_perm < 0, 0, GE_perm))),
+                 rank=3,
+                 method='lee')
+
+  AUC <- smooth(roc(predictor=featureScore(out_nmf)^2,
+                    response=ifelse(true,
+                                    1,0)),
+                method="density",n=500)
+  # Store performance results.
+  res <- data.frame(method="NMF",
+                    prop_signal=prop_signal,
+                    SENS=AUC$sensitivities,
+                    SPEC=-AUC$specificities,
+                    rep=jobID)
+
+  RES1 <- rbind(RES1,res)
+
+  # Fit OmicsPLS
+  o2m_out <- o2m(X = GE_perm,
+                 Y = PE_perm,
+                 n=2,
+                 nx=2,
+                 ny=2)
+
+  # Measure variable selection performance.
+  V <- rbind(o2m_out$`C.`,o2m_out$`W.`)
+
+  AUC <- smooth(roc(predictor=rowMeans(V)^2,
+                    response=ifelse(true,
+                                    1,0)),
+                method="density",n=500)
+
+  # Store performance results.
+  res <- data.frame(method="OmicsPLS",
+                    prop_signal=prop_signal,
+                    SENS=AUC$sensitivities,
+                    SPEC=-AUC$specificities,
+                    rep=jobID)
+
+  RES1 <- rbind(RES1,res)
+}
+
+save(RES1,
+     file=paste0("results/omic_int_meth_perf_data1",jobID,".RData"))
+
+q(save="no")

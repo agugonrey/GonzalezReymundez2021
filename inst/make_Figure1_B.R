@@ -1,9 +1,3 @@
-#-----------------------------------------------------------------------
-# create_Figure4.R:
-
-#This script uses the results of omic_int_comparisons_times.R
-# to create Figure 4.
-
 # Load required packages.
 library("ggplot2")
 library("viridis")
@@ -31,7 +25,7 @@ data$Model<-factor(data$Model)
 
 # Set time as factors.
 data$time1 <- actor(data$timehours,
-                   levels=as.character(unique(lev)))
+                    levels=as.character(unique(lev)))
 
 # Relabel methods.
 data$Model<-factor(data$Model,
@@ -56,7 +50,7 @@ data$p <- factor(data$p,
 # Exclude missing times for iCluster.
 tmp <- data$Model == "iCluster" &
   ((data$n == "n=1e5" & data$p == "p=1e5") |
-(data$n == "n=1e4" & data$p == "p=1e6"))
+     (data$n == "n=1e4" & data$p == "p=1e6"))
 
 # Subset results for plot.
 data <- data[!tmp,]
@@ -66,13 +60,13 @@ data$Method <- data$Model
 
 # Create plot.
 plot <- ggplot(data,aes(x=Model,
-                      y=time1,
-                      fill=Method,
-                      group=Method)) +
+                        y=time1,
+                        fill=Method,
+                        group=Method)) +
   facet_grid(p~n,switch = "y",scales = "free_y")+
   geom_bar(stat = "identity",position = position_dodge(0.9))+
   scale_fill_manual(values= c(viridis(4,option = "B"),
-                   viridis(4,option = "D")[-1])[order(runif(7))])+
+                              viridis(4,option = "D")[-1])[order(runif(7))])+
   theme_bw()+
   scale_x_discrete("Omic integration method") +
   scale_y_discrete("Time (hours)")+
@@ -82,7 +76,7 @@ plot <- ggplot(data,aes(x=Model,
         axis.title = element_text(face="bold"))
 
 # Save plot.
-ggsave(plot,file= "Figure4.png",width = 9,height = 10,units = "in")
+ggsave(plot,file= "Figure1-B.png",width = 9,height = 10,units = "in")
 
 # Exit R without saving.
 q(save = "no")
