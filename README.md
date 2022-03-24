@@ -1,6 +1,12 @@
 ## Supplementary Information for Gonzalez-Reymundez *et al.* (2021).
 
-This package contains supplementary material for Gonzalez-Reymundez *et al.* (2021).
+This package contains supplementary material for "MOSS: Multi-omic integration with Sparse Value Decomposition"
+
+Agustin Gonzalez-Reymundez, Alexander Grueneberg, Guanqi Lu,
+Filipe Couto Alves, Gonzalo Rincon, Ana I Vazquez.
+
+Bioinformatics (2022), btac179, https://doi.org/10.1093/bioinformatics/btac179
+
 The following sections contain the codes needed to generate and plot the results shown in the article.
 
 ### 1) [Installing MOSS and required packages.](https://github.com/agugonrey/GonzalezReymundez2021/blob/master/inst/install_req_packages.R)
